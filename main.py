@@ -104,3 +104,7 @@ async def run_rag_pipeline(payload: QueryInput):
 @app.get("/")
 def read_root():
     return {"status": "API is running. Use /docs for documentation."}
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy"}
