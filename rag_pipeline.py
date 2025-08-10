@@ -1129,6 +1129,7 @@ async def find_answers_with_pinecone(pinecone_client: PineconeClient,
                 "You are an expert analyst. For each question below, use ONLY the provided context to answer. "
                 "If the answer is directly present, quote or paraphrase it. "
                 "If the answer can be reasonably inferred from the context, do so and explain briefly. "
+                "Always provide your answers in English, regardless of the question or context language."
                 "Only if there is truly no relevant information, reply: 'The answer cannot be found in the provided document context.' "
                 "Your response must be a single JSON object with one key: \"answers\". The value of \"answers\" must be a JSON array of strings, in order."
                 + "".join(batch_prompt_parts)
