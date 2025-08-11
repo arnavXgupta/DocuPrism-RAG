@@ -423,3 +423,7 @@ async def run_hybrid_rag_pipeline(payload: QueryInput):
 @app.get("/", include_in_schema=False)
 def read_root():
     return {"status": "API is running. Use /docs for documentation."}
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy"}

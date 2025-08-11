@@ -936,7 +936,7 @@ def load_and_chunk_document(url: str, document_stream: io.BytesIO) -> List[Docum
 
 async def get_or_create_vectors(pinecone_client: PineconeClient, pinecone_index_host: str, doc_url: str, executor: ProcessPoolExecutor):
     """
-    Checks if a document exists. If not, triggers the parallel ingestion pipeline.
+    Checks if a document exists. If not, ingests it based on its content type.
     """
     logger.info(f"Ensuring vectors exist for document: {doc_url}")
     namespace = _create_namespace_from_url(doc_url)
@@ -956,11 +956,33 @@ async def get_or_create_vectors(pinecone_client: PineconeClient, pinecone_index_
         async with httpx.AsyncClient(timeout=120.0) as client:
             response = await client.get(doc_url)
             response.raise_for_status()
-            document_stream = io.BytesIO(response.content)
-        logger.info(f"Successfully downloaded document: {doc_url}")
+            document_bytes = response.content
+            # --- FIX: Get content-type from headers ---
+            content_type = response.headers.get("content-type", "").lower()
+            logger.info(f"Downloaded document from {doc_url} with content-type: {content_type}")
 
         loop = asyncio.get_running_loop()
-        chunked_docs = await loop.run_in_executor(executor, load_and_chunk_document, doc_url, document_stream)
+        
+        # --- FIX: Decide chunking strategy based on content-type ---
+        chunked_docs = []
+        known_document_types = ["application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]
+
+        if any(doc_type in content_type for doc_type in known_document_types):
+            logger.info("Using advanced document chunking for complex file type.")
+            document_stream = io.BytesIO(document_bytes)
+            chunked_docs = await loop.run_in_executor(executor, load_and_chunk_document, doc_url, document_stream)
+        else:
+            logger.info("Using simple text chunking for plain text or unknown content type.")
+            full_text = document_bytes.decode('utf-8', errors='replace')
+            text_splitter = RecursiveCharacterTextSplitter(
+                chunk_size=350, # Using TARGET_CHUNK_TOKENS
+                chunk_overlap=35, # 10% overlap
+                length_function=count_tokens
+            )
+            texts = text_splitter.split_text(full_text)
+            for text_chunk in texts:
+                metadata = {"source": doc_url, "text": text_chunk, "language": "en", "token_count": count_tokens(text_chunk)}
+                chunked_docs.append(Document(page_content=text_chunk, metadata=metadata))
 
         if not chunked_docs:
             logger.error("No document chunks were created. Ingestion cannot proceed.")
@@ -997,7 +1019,7 @@ async def get_or_create_vectors(pinecone_client: PineconeClient, pinecone_index_
 
 def normalize_text(text: str) -> str:
     """Cleans text by replacing common problematic characters."""
-    text = text.replace("", "'")
+    text = text.replace("�", "'") # Fix for Unicode replacement character
     text = text.replace("’", "'").replace("“", '"').replace("”", '"')
     return text
 
@@ -1131,7 +1153,7 @@ async def find_answers_with_pinecone(pinecone_client: PineconeClient,
                 "If the answer can be reasonably inferred from the context, do so and explain briefly. "
                 "Always provide your answers in English, regardless of the question or context language."
                 "Only if there is truly no relevant information, reply: 'The answer cannot be found in the provided document context.' "
-                "Your response must be a single JSON object with one key: \"answers\". The value of \"answers\" must be a JSON array of strings, in order."
+                "Your response must be a single JSON object with one key: \"answers\". The value of \"answers\" must be a JSON array of strings, in order to."
                 + "".join(batch_prompt_parts)
             )
             
@@ -1161,7 +1183,7 @@ async def find_answers_with_pinecone(pinecone_client: PineconeClient,
             all_answers.extend(sanitized_answers)
         except Exception as e:
             logger.error(f"Failed to parse response for batch {i}: {e}", exc_info=True)
-            batch_size = min(BATCH_SİZE, len(queries) - i * BATCH_SIZE)
+            batch_size = min(BATCH_SIZE, len(queries) - i * BATCH_SIZE)
             all_answers.extend(["Failed to parse Gemini response"] * batch_size)
     
     logger.info("Answer finding process complete.")
