@@ -273,7 +273,7 @@ from rag_pipeline import (
     find_answers_with_pinecone,
 )
 # This is the hardcoded solver script from our previous discussion
-from solver import flight_solver_logic 
+# from solver import flight_solver_logic 
 
 # --- Logging, Auth, and Lifespan setup ---
 app_logger = logging.getLogger(__name__)
@@ -343,14 +343,6 @@ class QueryInput(BaseModel):
 
 @app.post("/api/v1/hackrx/run", response_model=AnswerOutput, dependencies=[Depends(validate_token)])
 async def run_hybrid_rag_pipeline(payload: QueryInput):
-    """
-    This intelligent endpoint handles mixed-question payloads. It categorizes each
-    question and processes them in efficient batches (one for the solver, one for RAG),
-    then reassembles the answers in the correct order.
-    
-    If the document URL is new, it will trigger a parallelized, CPU-intensive
-    ingestion process to chunk and embed the document before proceeding.
-    """
     httpx_client = app_state.get("httpx_client")
     pinecone_client = app_state.get("pinecone_client")
     executor = app_state.get("process_pool_executor")
@@ -359,30 +351,30 @@ async def run_hybrid_rag_pipeline(payload: QueryInput):
         raise HTTPException(status_code=500, detail="Core application components not initialized.")
 
     # --- Step 1: Categorize all questions ---
-    app_logger.info("Categorizing questions into 'Solver' and 'RAG' batches.")
-    solver_question_indices = []
+    # app_logger.info("Categorizing questions into 'Solver' and 'RAG' batches.")
+    # solver_question_indices = []
     rag_questions_with_indices = []
 
     for index, question in enumerate(payload.questions):
-        if "flight number" in question.lower():
-            solver_question_indices.append(index)
-        else:
-            rag_questions_with_indices.append({"question": question, "original_index": index})
+        # if "flight number" in question.lower():
+        #     solver_question_indices.append(index)
+        # else:
+        rag_questions_with_indices.append({"question": question, "original_index": index})
 
     # This list will hold the final answers, in the correct order.
     final_answers = [None] * len(payload.questions)
 
     try:
         # --- Step 2: Process the Solver batch (if any) ---
-        if solver_question_indices:
-            app_logger.info(f"Found {len(solver_question_indices)} solver question(s). Running solver once.")
-            # Run the solver logic only ONCE.
-            solver_result = await flight_solver_logic(httpx_client)
-            flight_number = solver_result.answers[0]
+        # if solver_question_indices:
+        #     app_logger.info(f"Found {len(solver_question_indices)} solver question(s). Running solver once.")
+        #     # Run the solver logic only ONCE.
+        #     solver_result = await flight_solver_logic(httpx_client)
+        #     flight_number = solver_result.answers[0]
             
-            # Place the answer in all the slots that asked for it.
-            for index in solver_question_indices:
-                final_answers[index] = flight_number
+        #     # Place the answer in all the slots that asked for it.
+        #     for index in solver_question_indices:
+        #         final_answers[index] = flight_number
 
         # --- Step 3: Process the RAG batch (if any) ---
         if rag_questions_with_indices:
